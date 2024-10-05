@@ -1,12 +1,12 @@
 from typing import Any, Dict, List, Optional, Tuple
-
 import hydra
 import numpy as np
 import torch
 from omegaconf import DictConfig
-
 import pinnstorch
 
+# Check for GPU availability
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def read_data_fn(root_path):
     """Read and preprocess data from the specified root path.
@@ -14,7 +14,6 @@ def read_data_fn(root_path):
     :param root_path: The root directory containing the data.
     :return: Processed data in the form of a PointCloudData object.
     """
-
     data = pinnstorch.utils.load_data(root_path, "cylinder_nektar_wake.mat")
     x = data["X_star"][:, 0:1]  # N x 1
     y = data["X_star"][:, 1:2]  # N x 1
@@ -23,30 +22,35 @@ def read_data_fn(root_path):
     exact_u = U_star[:, 0, :]  # N x T
     exact_v = U_star[:, 1, :]  # N x T
     exact_p = data["p_star"]  # N x T
+
+    # Move data to GPU
+    x = torch.tensor(x, device=device, dtype=torch.float32)
+    y = torch.tensor(y, device=device, dtype=torch.float32)
+    t = torch.tensor(t, device=device, dtype=torch.float32)
+    exact_u = torch.tensor(exact_u, device=device, dtype=torch.float32)
+    exact_v = torch.tensor(exact_v, device=device, dtype=torch.float32)
+    exact_p = torch.tensor(exact_p, device=device, dtype=torch.float32)
+
     return pinnstorch.data.PointCloudData(
         spatial=[x, y], time=[t], solution={"u": exact_u, "v": exact_v, "p": exact_p}
     )
-
 
 def output_fn(outputs: Dict[str, torch.Tensor],
               x: torch.Tensor,
               y: torch.Tensor,
               t: torch.Tensor):
     """Define `output_fn` function that will be applied to outputs of net."""
-
     outputs["u"] = pinnstorch.utils.gradient(outputs["psi"], y)[0]
     outputs["v"] = -pinnstorch.utils.gradient(outputs["psi"], x)[0]
 
     return outputs
 
-
 def pde_fn(outputs: Dict[str, torch.Tensor],
            x: torch.Tensor,
            y: torch.Tensor,
            t: torch.Tensor,
-           extra_variables: Dict[str, torch.Tensor]):   
+           extra_variables: Dict[str, torch.Tensor]):
     """Define the partial differential equations (PDEs)."""
-
     u_x, u_y, u_t = pinnstorch.utils.gradient(outputs["u"], [x, y, t])
     u_xx = pinnstorch.utils.gradient(u_x, x)[0]
     u_yy = pinnstorch.utils.gradient(u_y, y)[0]
@@ -73,7 +77,6 @@ def pde_fn(outputs: Dict[str, torch.Tensor],
 
     return outputs
 
-
 @hydra.main(version_base="1.3", config_path="configs", config_name="config.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
     """Main entry point for training.
@@ -83,10 +86,9 @@ def main(cfg: DictConfig) -> Optional[float]:
     """
 
     # apply extra utilities
-    # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
     pinnstorch.utils.extras(cfg)
 
-    # train the model
+    # Train the model and ensure the model is on the GPU
     metric_dict, _ = pinnstorch.train(
         cfg, read_data_fn=read_data_fn, pde_fn=pde_fn, output_fn=output_fn
     )
@@ -98,7 +100,6 @@ def main(cfg: DictConfig) -> Optional[float]:
 
     # return optimized metric
     return metric_value
-
 
 if __name__ == "__main__":
     main()
