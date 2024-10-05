@@ -40,6 +40,10 @@ def output_fn(outputs: Dict[str, torch.Tensor],
               y: torch.Tensor,
               t: torch.Tensor):
     """Define `output_fn` function that will be applied to outputs of net."""
+
+    # Ensure tensors are on the GPU
+    x, y, t = x.to(device), y.to(device), t.to(device)
+
     outputs["u"] = pinnstorch.utils.gradient(outputs["psi"], y)[0]
     outputs["v"] = -pinnstorch.utils.gradient(outputs["psi"], x)[0]
 
@@ -51,6 +55,10 @@ def pde_fn(outputs: Dict[str, torch.Tensor],
            t: torch.Tensor,
            extra_variables: Dict[str, torch.Tensor]):
     """Define the partial differential equations (PDEs)."""
+
+    # Ensure tensors are on the GPU
+    x, y, t = x.to(device), y.to(device), t.to(device)
+
     u_x, u_y, u_t = pinnstorch.utils.gradient(outputs["u"], [x, y, t])
     u_xx = pinnstorch.utils.gradient(u_x, x)[0]
     u_yy = pinnstorch.utils.gradient(u_y, y)[0]
@@ -88,7 +96,7 @@ def main(cfg: DictConfig) -> Optional[float]:
     # apply extra utilities
     pinnstorch.utils.extras(cfg)
 
-    # Train the model and ensure the model is on the GPU
+    # Ensure model is moved to GPU within pinnstorch.train()
     metric_dict, _ = pinnstorch.train(
         cfg, read_data_fn=read_data_fn, pde_fn=pde_fn, output_fn=output_fn
     )
